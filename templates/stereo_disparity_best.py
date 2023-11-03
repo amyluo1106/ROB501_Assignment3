@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.ndimage.filters import *
+from scipy.ndimage.filters import gaussian_laplace, median_filter
 
 def stereo_disparity_best(Il, Ir, bbox, maxd):
     """
@@ -36,7 +36,49 @@ def stereo_disparity_best(Il, Ir, bbox, maxd):
 
     #--- FILL ME IN ---
 
-    # Code goes here...
+    """
+    This alternative matching algorithm first utilizes a Laplacian of Gaussians filter (sigma = 0.8) on both raw stereo images.
+    This ensures that edges become more well defined, allowing for more contrast which aids in the SAD cost computation afterwards.
+    This step is significant for the KITTI dataset as there is a lot of features in the image due to the busy street image.
+    After the disparities are matched using SAD, a median filter (10x10) is passed over the disparity map in order to do smoothing and remove noise.
+    Parameters were tuned using trial and error.
+    """
+
+    w, l = Il.shape
+
+    Id = np.zeros((w, l))
+
+    # Window size
+    window_size = 14
+    half_window = window_size // 2
+
+    Il = gaussian_laplace(Il, 1)
+    Ir = gaussian_laplace(Ir, 1)
+    
+    # Loop through image in bounding box region
+    for y in range(bbox[1][0], bbox[1][1]):
+        for x in range(bbox[0][0], bbox[0][1]):
+            match = 0
+            min_sad = float('inf')
+            
+            # Search under max disparity value
+            for d in range(maxd+1):
+
+                if x-d >= half_window and x+half_window < l:
+                     left_window = Il[y - half_window:y + half_window + 1, x - half_window:x + half_window + 1]
+                     right_window = Ir[y - half_window:y + half_window + 1, x - d - half_window:x - d + half_window + 1]
+                     
+                     # Compute the SAD score for the current disparity
+                     sad = np.sum(np.abs(left_window - right_window))
+
+                     if sad < min_sad:
+                         match = d
+                         min_sad = sad
+
+            Id[y, x] = match    
+
+    # Apply a median filter to smooth the disparity map
+    Id = median_filter(Id, 10)  
 
     #------------------
 
